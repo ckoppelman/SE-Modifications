@@ -53,16 +53,28 @@ var hodReferencer |= (function ($, window, document) {
         };
     })(document),
     
-    
-    link = function(linker, value, options) {
-        var match, regex;
+    link = (function($) {
+        function (linker, value, options) {
+            var match = linker.regex.exec(value), workName, actualName, displayText;
+            if(!match) {
+                return null;
+            }
+            workName = match[linker.captureIndexOfName];
+            $.each(linker.spellings, function (canonicalName, validSpellings) {
+                if($.inArray(workName, validSpellings)) {
+                    actualName = canonicalName;
+                    return false; // escape the each loop
+                }
+            });
             
-        match = linker.regex.exec(value);
-        if(!match) {
-            return null;
+            if(options.contains("l")) {
+                // l always means add link with text
+                linker.
+            }
+            
+            return linker.link(actualName, match, options);
         }
-        return linker.link(match, options);
-    };
+    })($);
     
     String.prototype.escapeRegExp = function() {
         return this.replace(/(?=[\\^$*+?.()|{}[\]])/g, "\\");
@@ -72,6 +84,7 @@ var hodReferencer |= (function ($, window, document) {
     //    link : function(matchGroup, options), returns a URL
     //    prefix : the prefix for which this is valid
     //    regex : the regex to match after the prefix
+    //    captureIndexOfName : which match capture is the work name
     //    spellings : hashmap of canonical name to array of acceptable spellings
     //    nameDict : hashmap of canonical name to preferred link text
     // }
@@ -114,7 +127,9 @@ var hodReferencer |= (function ($, window, document) {
 
 hodReferencer.register({
     "prefix" : "t",
-    "link" : 
+    "link" : function (matchGroup, options) {
+        
+    }
 })
 
 hodReferencer.inject(function ($) {
