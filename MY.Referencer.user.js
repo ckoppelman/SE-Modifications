@@ -33,18 +33,89 @@ ABANDON ALL HOPE, YE WHO LIKE WELL-WRITTEN CODE. y'know. with standards 'n stuff
 Are there even standards for JavaScript? Oh well.)
 */
 
-var hodReferencer = hodReferencer || {};
-
-hodReferencer.inject = function() {//Inject the script into the document
-    for (var i = 0; i < arguments.length; ++i) {
-        if (typeof (arguments[i]) == 'function') {
-            var script = document.createElement('script');
-            script.type = 'text/javascript';
-            script.textContent = '(' + arguments[i].toString() + ')(jQuery)';
-            document.body.appendChild(script);
+var hodReferencer |= (function ($, window, document) {
+    
+    var registrations = [],
+        prefixes = [],
+    
+    inject = (function (document) {
+        'use strict';
+        return function () {//Inject the script into the document
+            var i, script;
+            for (i = 1; i < arguments.length; ++i) {
+                if (typeof (arguments[i]) === 'function') {
+                    script = document.createElement('script');
+                    script.type = 'text/javascript';
+                    script.textContent = '(' + arguments[i].toString() + ')(jQuery)';
+                    document.body.appendChild(script);
+                }
+            }
+        };
+    })(document),
+    
+    
+    link = function(linker, value, options) {
+        var match, regex;
+            
+        match = linker.regex.exec(value);
+        if(!match) {
+            return null;
         }
-    }
-};
+        return linker.link(match, options);
+    };
+    
+    String.prototype.escapeRegExp = function() {
+        return this.replace(/(?=[\\^$*+?.()|{}[\]])/g, "\\");
+    };
+    // linker is an object with the following properties:
+    // { 
+    //    link : function(matchGroup, options), returns a URL
+    //    prefix : the prefix for which this is valid
+    //    regex : the regex to match after the prefix
+    //    spellings : hashmap of canonical name to array of acceptable spellings
+    //    nameDict : hashmap of canonical name to preferred link text
+    // }
+    return {
+        register : function (linker) {
+            registrations[linker.prefix.escapeRegExp()] = linker;
+            prefixes.push(linker.prefix.escapeRegExp());
+        },
+        refhijack : function ($textarea) {
+            var textarea = $textarea.addClass('ref-hijacked')[0], //add an extra class. Why? No idea. 
+                form     = $textarea.closest('form');             //Ask @TimStone, it's his fault
+            
+            form.focusout(function () { //when you click away, I pounce!
+                var i, prefixRegex, regex, match, replacementText, newValue;
+                regex = new RegExp("(\\(|\\s|^))\\[(" + prefixes.join("|") + ")[;,. :-]" +
+                               "(.+?)" + 
+                               "(?:[;., :-]([a-z]{0,4}))?\\]($|[\\s,.;:\\)]", "mig");
+                newValue = textarea.value;
+                while (true) {
+                    match = regex.exec(textarea.value);
+                    if(!match) {
+                        break;
+                    }
+                    // get the replacement
+                    replacementText = link(registrations[match[2]], match[3], match[4]]);
+                    if (replacementText) {
+                        newValue = newValue.replace(match[0], match[1] + replacementText + match[5]);
+                    }
+                }
+                
+                // manipulate DOM once.
+                textarea.value = newValue;
+                
+                StackExchange.MarkdownEditor.refreshAllPreviews(); //refresh the Q's & A's preview panes
+            });
+        }
+        
+    };
+}(jQuery, this, document);
+
+hodReferencer.register({
+    "prefix" : "t",
+    "link" : 
+})
 
 hodReferencer.inject(function ($) {
     function refhijack(t) {
@@ -352,3 +423,4 @@ hodReferencer.inject(function ($) {
         new refhijack($(this));//And while I'm at it, I'll them questions and answers too!
     });
 });
+);
