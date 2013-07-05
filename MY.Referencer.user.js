@@ -140,9 +140,9 @@ hodReferencer.referencer |= (function ($, window, document) {
 		hodReferencer.referencer.register("t", hodReferencer.ref.tanakh);
 		hodReferencer.referencer.register("g", hodReferencer.ref.gemara);
 		$('textarea[name="comment"]:not(.ref-hijacked)').live('focus', function () {
-			new refhijack($(this));//Alright, everybody keep calm! I'm hijackin' this 'ere comment box!
+			hodReferencer.referencer.refhijack($(this));//Alright, everybody keep calm! I'm hijackin' this 'ere comment box!
 		});
 		$('textarea[name="post-text"]:not(.ref-hijacked)').live('focus', function () {
-			new refhijack($(this));//And while I'm at it, I'll them questions and answers too!
+			hodReferencer.referencer.refhijack($(this));//And while I'm at it, I'll them questions and answers too!
 		});
 	});
