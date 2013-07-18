@@ -19,7 +19,7 @@
 // @exclude     http://*/reputation
 // @author      @HodofHod
 // @namespace       HodofHod
-// @version     3.2
+// @version     3.2.1
 // ==/UserScript==
 
 
@@ -97,18 +97,17 @@ function sefariahCaller(ref, refId, lang) {
     };
     GM_xmlhttpRequest({
         method: "GET",
-        context: { refId : refId , lang : lang },
         url: "http://sefaria.org/api/texts/" + encodeURIComponent(ref) + "?context=0&commentary=0",
         onload: function (response) {
             var value = JSON.stringify({
                     textResponse : {
-                        replaceText : response.context.refId,
+                        replaceText : this.refId,
                         data : JSON.parse(response.responseText),
-                        lang : response.context.lang
+                        lang : this.lang
                     }
                 });
             window.postMessage(value, "*");
-        },
+        }.bind({ refId : refId , lang : lang }),
         ontimeout: failure,
         onerror: failure
     });
