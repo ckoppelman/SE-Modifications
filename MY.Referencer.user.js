@@ -19,7 +19,7 @@
 // @exclude     http://*/reputation
 // @author      @HodofHod
 // @namespace       HodofHod
-// @version     3.1.1
+// @version     3.2
 // ==/UserScript==
 
 
@@ -252,12 +252,12 @@ inject(function ($) {
             return null;
         }
 
-        if (options.indexOf("w") !== -1 || options.indexOf("h") !== -1) {
+        if (options.indexOf("q") !== -1) {
             if (typeof linker.getText === 'function') {
                 text = linker.getText(actualName, match, options);
 
                 window.addEventListener("message", function (event) {
-                    var myText = text, messageJSON, fullText, warningText = "";
+                    var myText = text, messageJSON, fullText = '', warningText = "", lang;
                     try {
                         messageJSON = JSON.parse(event.data);
                     } catch (ignore) {
@@ -270,17 +270,26 @@ inject(function ($) {
 
                     if (messageJSON.hasOwnProperty("textResponse")) {
                         if (messageJSON.textResponse.replaceText === myText) {
-                            if (messageJSON.textResponse.lang === "en") {
+							lang = messageJSON.textResponse.lang;
+                            if (lang === "en") {
                                 fullText = messageJSON.textResponse.data.text;
-                                warningText = " In general, sefaria.org has more Hebrew" +
-                                        ' than English.';
-                            } else {
+							}
+
+							// we fallback to hebrew if sefaria doesn't have english
+							if(!fullText.length) {
                                 fullText = messageJSON.textResponse.data.he;
-								if(fullText.length) { fullText += "&rlm;"; }
+								if(fullText.length) {
+									fullText += "&rlm;";
+									if (lang === "en") {
+										// but if the user requested English, we tell them there ain't none.
+										alert("Sefaria.org does not yet have an English translation for that, so we're defaulting to the Hebrew. " +
+											  "Feel free to translate it yourself, and ideally, head over to http://sefaria.org/" + 
+											  messageJSON.textResponse.data.ref + " and share it with the world!");
+									}
+								}
                             }
 
                             if(!fullText.length) {
-                            
                                 alert("Sorry, either the " + messageJSON.textResponse.data.sectionNames[1].toLowerCase() +
                                         " that you specified does not exist in that " +
                                         messageJSON.textResponse.data.sectionNames[0].toLowerCase() +
@@ -469,7 +478,7 @@ inject(function ($) {
                         JSON.stringify( {
                             textRequest: {
                                 ref: ref,
-                                lang: flags.indexOf("h") !== -1 ? "he" : "en",
+                                lang: flags.indexOf("e") !== -1 ? "en" : "he",
                                 replaceText: refId
                             }
                         }), "*");
