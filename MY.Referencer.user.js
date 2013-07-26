@@ -137,7 +137,20 @@ window.addEventListener("message", receiveMessage, false);
 inject(function ($) {
     "use strict";
     var registrations = [],
-        prefixes = [];
+        prefixes = [],
+        
+        quote = function (linker, actualName, match, options) {
+            console.log("in quote", linker, actualName, match, options);
+            if (typeof linker.getText !== 'function') {
+                return;
+            }
+            var text = linker.getText(actualName, match, options);
+
+            window.addEventListener("message", insertQuote.bind({text: text}), false);
+            return text;
+        },
+
+        modeSwitches = {"q": quote};
 
     (function () {
         String.prototype.hodRef_escapeRegExp = function () {
@@ -278,16 +291,6 @@ inject(function ($) {
         }
     }
 
-    function quote(linker, actualName, match, options) {
-        if (typeof linker.getText !== 'function') {
-            return;
-        }
-        var text = linker.getText(actualName, match, options);
-
-        window.addEventListener("message", insertQuote.bind({text: text}), false);
-        return text;
-    }
-
     function link(linker, actualName, match, options) {
         var displayText = null,
             url,
@@ -334,7 +337,7 @@ inject(function ($) {
         var CAPTURE_INDEX_OF_NAME = 1,
             workName,
             actualName,
-            replacementText = null;
+            key;
 
         if (!innerMatch) {
             return null;
@@ -347,13 +350,13 @@ inject(function ($) {
             return null;
         }
 
-        if (options.indexOf("q") !== -1) {
-            replacementText = quote(linker, actualName, innerMatch, options);
-        } else {
-            replacementText = link(linker, actualName, innerMatch, options);
+        for (key in modeSwitches) {
+            if (modeSwitches.hasOwnProperty(key) && options.indexOf(key) !== -1) {
+                return modeSwitches[key](linker, actualName, innerMatch, options);
+            }
         }
-
-        return replacementText;
+        
+        return link(linker, actualName, innerMatch, options);
     }
 
     function refhijack(t) {
