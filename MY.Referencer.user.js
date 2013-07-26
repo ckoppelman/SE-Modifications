@@ -71,8 +71,8 @@ Throws alert() windows if the search comes up empty or ambiguous.
 the various linker.link functions manage tanach, gemara, and mishneh torah
 references, respectively. They generally call the below functions to generate the URL.
 
-chabadT(), chabadMT(), mechonMamreT(), mechonMamre() are private helper functions 
-that generate the URLs, and pass them back to their linking functions. 
+chabadT(), chabadMT(), mechonMamreT(), mechonMamre() are private helper functions
+that generate the URLs, and pass them back to their linking functions.
 gemara does its URLs in-house for now.
 
 */
@@ -90,7 +90,7 @@ function inject() { //Inject the script into the document
     }
 }
 
-function sefariahCaller(ref, refId, lang) {
+function sefariaCaller(ref, refId, lang) {
     "use strict";
     var failure = function () {
         alert("We had problems connecting to sefaria.org and could not fill in the text.");
@@ -107,7 +107,7 @@ function sefariahCaller(ref, refId, lang) {
                     }
                 });
             window.postMessage(value, "*");
-        }.bind({ refId : refId , lang : lang }),
+        }.bind({ refId : refId, lang : lang }),
         ontimeout: failure,
         onerror: failure
     });
@@ -128,7 +128,7 @@ function receiveMessage(event) {
 
     if (messageJSON.hasOwnProperty("textRequest")) {
         textRef = messageJSON.textRequest.ref;
-        sefariahCaller(textRef, messageJSON.textRequest.replaceText, messageJSON.textRequest.lang);
+        sefariaCaller(textRef, messageJSON.textRequest.replaceText, messageJSON.textRequest.lang);
     }
 }
 
@@ -138,6 +138,7 @@ inject(function ($) {
     "use strict";
     var registrations = [],
         prefixes = [];
+
     (function () {
         String.prototype.hodRef_escapeRegExp = function () {
             return this.replace(/[\\\^$*+?.\(\)|\[\]]/g, "\\$&");
@@ -181,7 +182,7 @@ inject(function ($) {
                 break;
             case 4:
                 word = word.slice(0, 3);
-                break; 
+                break;
             }
             word = new RegExp(word);//turn word into a regex for searching
             if (['1', '2', 'i', 'ii'].indexOf(title_words[wordi]) !== -1 && redo > 0) { title_words[wordi] += '(,|$)'; } //special case for multi-volumes
@@ -227,13 +228,69 @@ inject(function ($) {
         }
     }
 
-    function link(linker, value, options) {
-        var match = linker.regex.exec(value),
-            workName,
-            actualName = null,
-            displayText = null,
+    function insertQuote(event) {
+        var myText = this.text, messageJSON, fullText = '', lang;
+        try {
+            messageJSON = JSON.parse(event.data);
+        } catch (ignore) {
+            // Do nothing
+        }
+
+        if (!messageJSON) {
+            return; //-- Message is not for us.
+        }
+
+        if (messageJSON.hasOwnProperty("textResponse")) {
+            if (messageJSON.textResponse.replaceText === myText) {
+                lang = messageJSON.textResponse.lang;
+                if (lang === "en") {
+                    fullText = messageJSON.textResponse.data.text;
+                }
+
+                // we fallback to hebrew if sefaria doesn't have english
+                if (!fullText.length) {
+                    fullText = messageJSON.textResponse.data.he;
+                    if (fullText.length) {
+                        fullText += "&rlm;";
+                        if (lang === "en") {
+                            // but if the user requested English, we tell them there ain't none.
+                            alert("Sefaria.org does not yet have an English translation for that, so we're defaulting to the Hebrew. " +
+                                  "Feel free to translate it yourself, and ideally, head over to http://sefaria.org/" +
+                                  messageJSON.textResponse.data.ref + " and share it with the world!");
+                        }
+                    }
+                }
+
+                if (!fullText.length) {
+                    alert("Sorry, either the " + messageJSON.textResponse.data.sectionNames[1].toLowerCase() +
+                            " that you specified does not exist in that " +
+                            messageJSON.textResponse.data.sectionNames[0].toLowerCase() +
+                            " or sefaria.org does not know about it. " +
+                            "Please try again with better values.");
+                    return;
+                }
+
+                $('.ref-hijacked').each(function () {
+                    this.value = this.value.replace(myText, fullText);
+                });
+                try { StackExchange.MarkdownEditor.refreshAllPreviews(); } catch (ignore) {} //refresh the Q's & A's preview panes
+            }
+        }
+    }
+
+    function quote(linker, actualName, match, options) {
+        if (typeof linker.getText !== 'function') {
+            return;
+        }
+        var text = linker.getText(actualName, match, options);
+
+        window.addEventListener("message", insertQuote.bind({text: text}), false);
+        return text;
+    }
+
+    function link(linker, actualName, match, options) {
+        var displayText = null,
             url,
-            text,
             addLink,
             untouched,
             fixedName,
@@ -243,73 +300,8 @@ inject(function ($) {
             return null;
         }
 
-        options = (options || '').toLowerCase();
-        workName = match[CAPTURE_INDEX_OF_NAME].toLowerCase().replace(/ \./g, '');
-        actualName = search(workName, linker.spellings, match[CAPTURE_INDEX_OF_NAME], linker.searchType);
-
         if (!actualName) {
             return null;
-        }
-
-        if (options.indexOf("q") !== -1) {
-            if (typeof linker.getText === 'function') {
-                text = linker.getText(actualName, match, options);
-
-                window.addEventListener("message", function (event) {
-                    var myText = text, messageJSON, fullText = '', warningText = "", lang;
-                    try {
-                        messageJSON = JSON.parse(event.data);
-                    } catch (ignore) {
-                        // Do nothing
-                    }
-
-                    if (!messageJSON) {
-                        return; //-- Message is not for us.
-                    }
-
-                    if (messageJSON.hasOwnProperty("textResponse")) {
-                        if (messageJSON.textResponse.replaceText === myText) {
-							lang = messageJSON.textResponse.lang;
-                            if (lang === "en") {
-                                fullText = messageJSON.textResponse.data.text;
-							}
-
-							// we fallback to hebrew if sefaria doesn't have english
-							if(!fullText.length) {
-                                fullText = messageJSON.textResponse.data.he;
-								if(fullText.length) {
-									fullText += "&rlm;";
-									if (lang === "en") {
-										// but if the user requested English, we tell them there ain't none.
-										alert("Sefaria.org does not yet have an English translation for that, so we're defaulting to the Hebrew. " +
-											  "Feel free to translate it yourself, and ideally, head over to http://sefaria.org/" + 
-											  messageJSON.textResponse.data.ref + " and share it with the world!");
-									}
-								}
-                            }
-
-                            if(!fullText.length) {
-                                alert("Sorry, either the " + messageJSON.textResponse.data.sectionNames[1].toLowerCase() +
-                                        " that you specified does not exist in that " +
-                                        messageJSON.textResponse.data.sectionNames[0].toLowerCase() +
-                                        " or sefaria.org does not know about it. " +
-                                        "Please try again with better values." + warningText);
-                                return;
-                            }
-
-                            $('.ref-hijacked').each(function () {
-                                $(this)[0].value = $(this)[0].value.replace(
-                                    text,
-                                    fullText
-                                );
-                            });
-                            try { StackExchange.MarkdownEditor.refreshAllPreviews(); } catch (ignore) {} //refresh the Q's & A's preview panes
-                        }
-                    }
-
-                }, false);
-                return text;
-            }
         }
 
         url = linker.link(actualName, match, options);
@@ -338,6 +330,32 @@ inject(function ($) {
         return url;
     }
 
+    function replaceReference(linker, innerMatch, textarea, options) {
+        var CAPTURE_INDEX_OF_NAME = 1,
+            workName,
+            actualName,
+            replacementText = null;
+
+        if (!innerMatch) {
+            return null;
+        }
+
+        workName = innerMatch[CAPTURE_INDEX_OF_NAME].toLowerCase().replace(/['.]/g, '');
+        actualName = search(workName, linker.spellings, innerMatch[CAPTURE_INDEX_OF_NAME], linker.searchType);
+
+        if (!actualName) {
+            return null;
+        }
+
+        if (options.indexOf("q") !== -1) {
+            replacementText = quote(linker, actualName, innerMatch, options);
+        } else {
+            replacementText = link(linker, actualName, innerMatch, options);
+        }
+
+        return replacementText;
+    }
+
     function refhijack(t) {
         var r = true,
             regex,
@@ -345,23 +363,40 @@ inject(function ($) {
             textarea = t.addClass('ref-hijacked')[0]; //add an extra class. Why? No idea. Ask @TimStone, it's his fault
 
         t.on('focusout', function () { //when you click away, I pounce!
-            var replacementText;
+            var replacementText,
+                options,
+                innerMatch,
+                workName,
+                linker,
+                hasSomethingChanged = false,
+                actualName,
+                CAPTURE_INDEX_OF_NAME = 1;
             if (r) {
                 r = false;
                 regex = new RegExp("(\\(|\\s|^)\\[\\s*(" + prefixes.join("|") + ")[;,. :-]" +
                                "(.+?)" +
-                               "(?:[;.,\\s:-]([a-z]{0,4}))?\\s*\\]($|[\\s,.;:\\)])", "mig");
+                               "(?:[;.,\\s:-]([a-z]{0,7}))?\\s*\\]($|[\\s,.;:\\)])", "mig");
                 while (true) {
                     match = regex.exec(textarea.value);
                     if (!match) {
                         break;
                     }
-                    replacementText = link(registrations[match[2]], match[3], match[4]);
+                    options = (match[4] || "").toLowerCase();
+
+                    linker = registrations[match[2]];
+                    innerMatch = linker.regex.exec(match[3]);
+                    
+                    replacementText = replaceReference(linker, innerMatch, textarea, options);
+                    
                     if (replacementText) {
                         textarea.value = textarea.value.replace(match[0], match[1] + replacementText + match[5]);
+                        return true;
                     }
                 }
-                try { StackExchange.MarkdownEditor.refreshAllPreviews(); } catch (ignore) {} //refresh the Q's & A's preview panes
+
+                if (hasSomethingChanged) {
+                    try { StackExchange.MarkdownEditor.refreshAllPreviews(); } catch (ignore) {} //refresh the Q's & A's preview panes
+                }
             }
         });
         t.on('change', function () {
@@ -421,7 +456,7 @@ inject(function ($) {
                 },
 
                 map = {'Tzefaniah': [16200, 3, '21'], 'Hoshea': [16155, 14, '13'], 'Nachum': [16194, 3, '19'], 'Michah': [16187, 7, '18'], 'Shoftim': [15809, 21, '07'], 'Melachim II': [15907, 25, '09b'], 'Tehillim': [16222, 150, '26'], 'Nechemiah': [16508, 13, '35b'], 'Kohelet': [16462, 12, '31'], 'Yirmiyahu': [15998, 52, '11'], 'Amos': [16173, 9, '15'], 'Zechariah': [16205, 14, '23'], 'Melachim I': [15885, 22, '09a'], 'Divrei Hayamim II': [16550, 36, '25b'], 'Shmuel I': [15830, 31, '08a'], 'Yeshayahu': [15932, 66, '10'], 'Shmuel II': [15861, 24, '08b'], 'Yonah': [16183, 4, '17'], 'Rus': [16453, 4, '29'], 'Shir HaShirim': [16445, 8, '30'], 'Vayikra': [9902, 27, '03'], 'Ezra': [16498, 10, '35a'], 'Esther': [16474, 10, '33'], 'Yehoshua': [15785, 24, '06'], 'Yechezkel': [16099, 48, '12'], 'Iyov': [16403, 42, '27'], 'Divrei Hayamim I': [16521, 29, '25a'], 'Mishlei': [16372, 31, '28'], 'Daniel': [16484, 12, '34'], 'Devarim': [9965, 34, '05'], 'Yoel': [16169, 4, '14'], 'Chavakuk': [16197, 3, '20'], 'Bamidbar': [9929, 36, '04'], 'Chaggai': [16203, 2, '22'], 'Shemot': [9862, 40, '02'], 'Malachi': [16219, 3, '24'], 'Bereishit': [8165, 50, '01'], 'Eichah': [16457, 5, '32'], 'Ovadiah': [16182, 1, '16']
-                },
+                    },
 
                 isValidChapter = function (book, chpt) {
                     if (chpt === '0') { //If the chapter number is 0, then someone's trying to cheat me!
@@ -430,7 +465,7 @@ inject(function ($) {
                     }
 
                     if (chpt > map[book][1]) { //Stop trying to sneak fake chapters in, aright?
-                        alert('"' + chpt + '" is not a valid chapter for ' + book + '. \n\nThere are only ' + map[book][1] + ' `chapters in ' + book + '\n\nPlease try again.');
+                        alert('"' + chpt + '" is not a valid chapter for ' + book + '. \n\nThere are only ' + map[book][1] + ' chapters in ' + book + '\n\nPlease try again.');
                         return false;
                     }
                     return true;
@@ -474,13 +509,15 @@ inject(function ($) {
                     }
 
                     window.postMessage(
-                        JSON.stringify( {
+                        JSON.stringify({
                             textRequest: {
                                 ref: ref,
                                 lang: flags.indexOf("e") !== -1 ? "en" : "he",
                                 replaceText: refId
                             }
-                        }), "*");
+                        }),
+                        "*"
+                    );
                     return refId;
                 }
             };
@@ -510,7 +547,7 @@ inject(function ($) {
                 }
                 return res;
             },
-            spellings: ['Brachos:berachos,berachot,brachos,brachot,brcht,brchs', 'Shabbos:shabbos,shabbat,shabbas,shabos,shabat,shbt,shbs', 'Eruvin:eruvin,eiruvin,ervn,er', 'Pesachim:pesachim,psachim,pesakhim,psakhim,pes,psa,pschm,ps', 'Shekalim:shekalim,shekolim,shkalim,shkolim,shk,shek', 'Yoma:yoma,yuma,ym', 'Succah:succah,sukkah,suka,sukah,sk,sc', 'Beitzah:beitzah,betzah,betza,btz', 'Rosh Hashanah:rosh,hashana,rsh,rh', 'Taanis:taanis,taanith,tanith,tanis,tns,tn', 'Megilah:megilah,mgl', 'Moed Katan:moedkatan,md,mk', 'Chagigah:chagigah,chg', 'Yevamos:yevamos,yevamot,yevamoth,yvms,yvmt', 'Kesuvos:kesuvos,kesubos,kesubot,ketubot,ketuvot,ksuvos,ksubos,ksvs,ksvt,ktbt,ks,kt', 'Nedarim:nedarim,ndrm,ndr', 'Nazir:nazir,nozir,naz,noz,nzr,nz', 'Sotah:sotah,sota,sot,so,st', 'Gitin:gitin,gittin,git,gtn,gt', 'Kiddushin:kiddushin,kidushin,kid,ki,kds,kdshn,kdsh,kd', 'Bava Kama:bavakama,babakama,bavakamma,bk,bkama', 'Bava Metzia:bavametzia,bavametziah,babametziah,babametzia,bm,bmetzia,bmetziah', 'Bava Basra:bavabasra,bavabatra,bababatra,bavabatrah,bb,bbatra,bbasra,bbatrah,bbasrah', 'Sanhedrin:sanhedrin,sn,snh,snhd,snhdrn', 'Makkos:makkos,makos,makkot,makot,mkt', 'Shevuos:shevuos,shevuot,shavuot,shavuos,shvt,shvs,shvuot,shvuos', 'Avoda Zarah:avodazarah,avodazara,avodahzara,avodahzarah,avodah,az,avd,avo,avod,av', 'Horayos:horayos,horaiot,horaios,horayot,horiyot,horaot,ho,hor,hrs,hrt,hr', 'Zevachim:zevachim,zevakhim,zvchm,zvkhm', 'Menachos:menachos,menachot,menakhos,menakhot,mncht,mnkht', 'Chulin:chulin,chullin,khulin,khullin,chl,khl,chln,khln', 'Bechoros:bechoros,bchoros,bechorot,bchorot,bcrt,bchrt,bkhrt,bc,bch,bkh', 'Erchin:erchin,erkhin,arachin,arakhin,ara,erc,erk', 'Temurah:temurah,tmurah,tmr', 'Kerisus:kerisus,krisus,keritut,kritut,kerisos,krisos,keritot,kritot,kerithoth,krithoth,kr,ker,krt,krs', 'Meilah:meilah,meila,mei,ml', 'Nidah:nidah,niddah'], 
+            spellings: ['Brachos:berachos,berachot,brachos,brachot,brcht,brchs', 'Shabbos:shabbos,shabbat,shabbas,shabos,shabat,shbt,shbs', 'Eruvin:eruvin,eiruvin,ervn,er', 'Pesachim:pesachim,psachim,pesakhim,psakhim,pes,psa,pschm,ps', 'Shekalim:shekalim,shekolim,shkalim,shkolim,shk,shek', 'Yoma:yoma,yuma,ym', 'Succah:succah,sukkah,suka,sukah,sk,sc', 'Beitzah:beitzah,betzah,betza,btz', 'Rosh Hashanah:rosh,hashana,rsh,rh', 'Taanis:taanis,taanith,tanith,tanis,tns,tn', 'Megilah:megilah,mgl', 'Moed Katan:moedkatan,md,mk', 'Chagigah:chagigah,chg', 'Yevamos:yevamos,yevamot,yevamoth,yvms,yvmt', 'Kesuvos:kesuvos,kesubos,kesubot,ketubot,ketuvot,ksuvos,ksubos,ksvs,ksvt,ktbt,ks,kt', 'Nedarim:nedarim,ndrm,ndr', 'Nazir:nazir,nozir,naz,noz,nzr,nz', 'Sotah:sotah,sota,sot,so,st', 'Gitin:gitin,gittin,git,gtn,gt', 'Kiddushin:kiddushin,kidushin,kid,ki,kds,kdshn,kdsh,kd', 'Bava Kama:bavakama,babakama,bavakamma,bk,bkama', 'Bava Metzia:bavametzia,bavametziah,babametziah,babametzia,bm,bmetzia,bmetziah', 'Bava Basra:bavabasra,bavabatra,bababatra,bavabatrah,bb,bbatra,bbasra,bbatrah,bbasrah', 'Sanhedrin:sanhedrin,sn,snh,snhd,snhdrn', 'Makkos:makkos,makos,makkot,makot,mkt', 'Shevuos:shevuos,shevuot,shavuot,shavuos,shvt,shvs,shvuot,shvuos', 'Avoda Zarah:avodazarah,avodazara,avodahzara,avodahzarah,avodah,az,avd,avo,avod,av', 'Horayos:horayos,horaiot,horaios,horayot,horiyot,horaot,ho,hor,hrs,hrt,hr', 'Zevachim:zevachim,zevakhim,zvchm,zvkhm', 'Menachos:menachos,menachot,menakhos,menakhot,mncht,mnkht', 'Chulin:chulin,chullin,khulin,khullin,chl,khl,chln,khln', 'Bechoros:bechoros,bchoros,bechorot,bchorot,bcrt,bchrt,bkhrt,bc,bch,bkh', 'Erchin:erchin,erkhin,arachin,arakhin,ara,erc,erk', 'Temurah:temurah,tmurah,tmr', 'Kerisus:kerisus,krisus,keritut,kritut,kerisos,krisos,keritot,kritot,kerithoth,krithoth,kr,ker,krt,krs', 'Meilah:meilah,meila,mei,ml', 'Nidah:nidah,niddah'],
             searchType: { book: "tractate of Gemara", partPlural: "tractates" },
             displayName: function (name, match, isUntouched) { return name + " " + match[2] + (isUntouched ? match[3] : match[3].toLowerCase()); }
         });
