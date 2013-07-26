@@ -90,7 +90,7 @@ function inject() { //Inject the script into the document
     }
 }
 
-function sefariaCaller(ref, refId, lang) {
+function sefariaCaller(ref, refId, language) {
     "use strict";
     var failure = function () {
         alert("We had problems connecting to sefaria.org and could not fill in the text.");
@@ -103,11 +103,11 @@ function sefariaCaller(ref, refId, lang) {
                     textResponse : {
                         replaceText : this.refId,
                         data : JSON.parse(response.responseText),
-                        lang : this.lang
+                        language : this.language
                     }
                 });
             window.postMessage(value, "*");
-        }.bind({ refId : refId, lang : lang }),
+        }.bind({ refId : refId, language : language }),
         ontimeout: failure,
         onerror: failure
     });
@@ -128,7 +128,7 @@ function receiveMessage(event) {
 
     if (messageJSON.hasOwnProperty("textRequest")) {
         textRef = messageJSON.textRequest.ref;
-        sefariaCaller(textRef, messageJSON.textRequest.replaceText, messageJSON.textRequest.lang);
+        sefariaCaller(textRef, messageJSON.textRequest.replaceText, messageJSON.textRequest.language);
     }
 }
 
@@ -138,19 +138,7 @@ inject(function ($) {
     "use strict";
     var registrations = [],
         prefixes = [],
-        
-        quote = function (linker, actualName, match, options) {
-            console.log("in quote", linker, actualName, match, options);
-            if (typeof linker.getText !== 'function') {
-                return;
-            }
-            var text = linker.getText(actualName, match, options);
-
-            window.addEventListener("message", insertQuote.bind({text: text}), false);
-            return text;
-        },
-
-        modeSwitches = {"q": quote};
+        modeSwitches = {};
 
     (function () {
         String.prototype.hodRef_escapeRegExp = function () {
@@ -162,6 +150,10 @@ inject(function ($) {
         var cleanPrefix = prefix.hodRef_escapeRegExp();
         registrations[cleanPrefix] = linker;
         prefixes.push(cleanPrefix);
+    }
+
+    function registerModeSwitch(flag, callback) {
+        modeSwitches[flag] = callback;
     }
 
     function search(title, spellings, searchInfo, originalTitle, redo) {
@@ -242,7 +234,11 @@ inject(function ($) {
     }
 
     function insertQuote(event) {
-        var myText = this.text, messageJSON, fullText = '', lang;
+        var myText = this.text,
+            messageJSON,
+            fullText = '',
+            language;
+
         try {
             messageJSON = JSON.parse(event.data);
         } catch (ignore) {
@@ -255,8 +251,8 @@ inject(function ($) {
 
         if (messageJSON.hasOwnProperty("textResponse")) {
             if (messageJSON.textResponse.replaceText === myText) {
-                lang = messageJSON.textResponse.lang;
-                if (lang === "en") {
+                language = messageJSON.textResponse.language;
+                if (language === "en") {
                     fullText = messageJSON.textResponse.data.text;
                 }
 
@@ -265,7 +261,7 @@ inject(function ($) {
                     fullText = messageJSON.textResponse.data.he;
                     if (fullText.length) {
                         fullText += "&rlm;";
-                        if (lang === "en") {
+                        if (language === "en") {
                             // but if the user requested English, we tell them there ain't none.
                             alert("Sefaria.org does not yet have an English translation for that, so we're defaulting to the Hebrew. " +
                                   "Feel free to translate it yourself, and ideally, head over to http://sefaria.org/" +
@@ -369,11 +365,8 @@ inject(function ($) {
             var replacementText,
                 options,
                 innerMatch,
-                workName,
                 linker,
-                hasSomethingChanged = false,
-                actualName,
-                CAPTURE_INDEX_OF_NAME = 1;
+                hasSomethingChanged = false;
             if (r) {
                 r = false;
                 regex = new RegExp("(\\(|\\s|^)\\[\\s*(" + prefixes.join("|") + ")[;,. :-]" +
@@ -408,7 +401,14 @@ inject(function ($) {
     }
 
     (function () {
-        register("t", (function () {
+
+        // add registration to jQuery
+        $.extend({ hodReferencer: {
+            registerReferencer : register,
+            registerModeSwitch : registerModeSwitch
+        } });
+
+        $.hodReferencer.registerReferencer("t", (function () {
             var mechonMamreT = function (book, chpt, vrs, map) {
                 var url = null;
                 if (chpt < 10) { chpt = '0' + chpt; } //Mechon Mamre likes all their chapter ids to be two digits, and everyone else can go fayfn.
@@ -515,7 +515,7 @@ inject(function ($) {
                         JSON.stringify({
                             textRequest: {
                                 ref: ref,
-                                lang: flags.indexOf("e") !== -1 ? "en" : "he",
+                                language: flags.indexOf("e") !== -1 ? "en" : "he",
                                 replaceText: refId
                             }
                         }),
@@ -526,7 +526,7 @@ inject(function ($) {
             };
         }()));
 
-        register("g", {
+        $.hodReferencer.registerReferencer("g", {
             regex: /^([a-zA-Z'" .]{2,}?)[;.,\s:\-]+(\d{1,3})([ab])$/i,
             link: function (mes, match, flags) {
                 var mesechtos = {'Chulin': [31, 141], 'Eruvin': [3, 104], 'Horayos': [28, 13], 'Rosh Hashanah': [9, 34], 'Shekalim': [5, 22], 'Menachos': [30, 109], 'Megilah': [11, 31], 'Bechoros': [32, 60], 'Brachos': [1, 63], 'Gitin': [19, 89], 'Taanis': [10, 30], 'Moed Katan': [12], 'Beitzah': [8, 39], 'Bava Kama': [21, 118], 'Kesuvos': [15, 111], 'Sanhedrin': [24, 112], 'Nazir': [17, 65], 'Kiddushin': [20, 81], 'Pesachim': [4, 120], 'Bava Basra': [23, 175], 'Sotah': [18, 48], 'Bava Metzia': [22, 118], 'Yoma': [6, 87], 'Succah': [7, 55], 'Meilah': [36, 21], 'Shabbos': [2, 156], 'Erchin': [33, 33], 'Nedarim': [16, 90], 'Shevuos': [26, 48], 'Temurah': [34, 33], 'Kerisus': [35, 27], 'Zevachim': [29, 119], 'Makkos': [25, 23], 'Avoda Zarah': [27, 75], 'Nidah': [37, 72], 'Chagigah': [13, 26], 'Yevamos': [14, 122]
@@ -555,7 +555,7 @@ inject(function ($) {
             displayName: function (name, match, isUntouched) { return name + " " + match[2] + (isUntouched ? match[3] : match[3].toLowerCase()); }
         });
 
-        register("mt", (function () {
+        $.hodReferencer.registerReferencer("mt", (function () {
             var chabadMT = function (topic, chpt, mtmap) {
                 var base = 'http://www.chabad.org/library/article_cdo/aid/',
                     cid = mtmap[topic][2][chpt];
@@ -602,6 +602,16 @@ inject(function ($) {
                 }
             };
         }()));
+
+        $.hodReferencer.registerModeSwitch("q", function (linker, actualName, match, options) {
+            if (typeof linker.getText !== 'function') {
+                return;
+            }
+            var text = linker.getText(actualName, match, options);
+
+            window.addEventListener("message", insertQuote.bind({text: text}), false);
+            return text;
+        });
     }());
 
     $(document).on('focus', 'textarea[name="comment"]:not(.ref-hijacked)', function () {
